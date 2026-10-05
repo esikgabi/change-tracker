@@ -36,3 +36,50 @@ def normalize(html, selector=None):
 
 def signature(text, links):
     return hashlib.sha256((text + "\n--\n" + "\n".join(links)).encode()).hexdigest()
+
+
+@dataclass
+class Config:
+    url: str
+    smtp_host: str
+    smtp_user: str
+    smtp_pass: str
+    mail_to: str
+    smtp_port: int = 587
+    interval_min: int = 15
+    selector: str = None
+    state_path: str = "/data/state.json"
+
+    @classmethod
+    def from_env(cls):
+        e = os.environ
+        return cls(
+            url=e["WATCH_URL"], smtp_host=e["SMTP_HOST"], smtp_user=e["SMTP_USER"],
+            smtp_pass=e["SMTP_PASS"], mail_to=e["MAIL_TO"],
+            smtp_port=int(e.get("SMTP_PORT", 587)),
+            interval_min=int(e.get("INTERVAL_MIN", 15)),
+            selector=e.get("CSS_SELECTOR") or None,
+            state_path=e.get("STATE_PATH", "/data/state.json"),
+        )
+
+
+def build_body(url, old_text, new_text, old_links, new_links):
+    diff = "\n".join(difflib.unified_diff(
+        old_text.splitlines(), new_text.splitlines(), "before", "after", lineterm="", n=1))
+    added = sorted(set(new_links) - set(old_links))
+    links = "\n".join(added) or "(none)"
+    return f"Page changed: {url}\n\nNew links:\n{links}\n\nText diff:\n{diff or '(links only)'}\n"
+
+
+def send_mail(cfg, subject, body):
+    msg = EmailMessage()
+    msg["Subject"], msg["From"], msg["To"] = subject, cfg.smtp_user, cfg.mail_to
+    msg.set_content(body)
+    if cfg.smtp_port == 465:
+        s = smtplib.SMTP_SSL(cfg.smtp_host, 465, timeout=30)
+    else:
+        s = smtplib.SMTP(cfg.smtp_host, cfg.smtp_port, timeout=30)
+        s.starttls()
+    with s:
+        s.login(cfg.smtp_user, cfg.smtp_pass)
+        s.send_message(msg)

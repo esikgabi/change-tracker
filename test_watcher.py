@@ -33,6 +33,13 @@ def test_normalize_selector():
     assert watcher.normalize(html, "#a")[0] == "one"
 
 
+def test_build_body():
+    body = watcher.build_body("http://x/e", "a\nb", "a\nc", ["/a"], ["/a", "/register"])
+    assert "http://x/e" in body
+    assert "-b" in body and "+c" in body
+    assert "/register" in body and "New links" in body
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
