@@ -83,3 +83,73 @@ def send_mail(cfg, subject, body):
     with s:
         s.login(cfg.smtp_user, cfg.smtp_pass)
         s.send_message(msg)
+
+
+def fetch(url):
+    headers = {"User-Agent": "change-tracker/1.0"}
+    for attempt in (1, 2):
+        try:
+            r = requests.get(url, timeout=30, headers=headers)
+            r.raise_for_status()
+            return r.text
+        except requests.RequestException:
+            if attempt == 2:
+                raise
+            time.sleep(5)
+
+
+def _load(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {}
+
+
+def _save(path, st):
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(st, f)
+    os.replace(tmp, path)  # atomic
+
+
+def check(cfg, fetch_fn=fetch, send=send_mail):
+    """One poll. Mail is sent BEFORE state is saved, so an SMTP failure retries next cycle."""
+    st = _load(cfg.state_path)
+    fails = st.get("failures", 0)
+    try:
+        html = fetch_fn(cfg.url)
+    except Exception as e:
+        log.warning("fetch failed: %s", e)
+        fails += 1
+        if fails == 3:
+            send(cfg, "Watcher failing", f"3 consecutive fetch failures for {cfg.url}: {e}")
+        st["failures"] = fails
+        _save(cfg.state_path, st)
+        return
+    if fails >= 3:
+        send(cfg, "Watcher recovered", f"Fetching {cfg.url} works again.")
+    text, links = normalize(html, cfg.selector)
+    h = signature(text, links)
+    if "hash" not in st:
+        send(cfg, "Watcher started", f"Baseline stored for {cfg.url}")
+    elif h != st["hash"]:
+        send(cfg, "Page changed", build_body(cfg.url, st["text"], text, st["links"], links))
+    st.update(hash=h, text=text, links=links, failures=0)
+    _save(cfg.state_path, st)
+
+
+def main():
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+    cfg = Config.from_env()
+    while True:
+        try:
+            check(cfg)
+        except Exception:
+            log.exception("check failed")
+        time.sleep(cfg.interval_min * 60)
+
+
+if __name__ == "__main__":
+    main()

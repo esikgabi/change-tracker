@@ -40,6 +40,56 @@ def test_build_body():
     assert "/register" in body and "New links" in body
 
 
+def make_cfg():
+    d = tempfile.mkdtemp()
+    return SimpleNamespace(url="http://x", selector=None, state_path=os.path.join(d, "s.json"))
+
+
+def run(cfg, html=None, boom=False, send_fails=False):
+    sent = []
+
+    def fetch_fn(url):
+        if boom:
+            raise RuntimeError("down")
+        return html
+
+    def send(cfg_, subject, body):
+        if send_fails:
+            raise OSError("smtp down")
+        sent.append(subject)
+
+    try:
+        watcher.check(cfg, fetch_fn, send)
+    except OSError:
+        pass
+    return sent
+
+
+def test_baseline_then_no_change_then_change():
+    cfg = make_cfg()
+    assert run(cfg, page("a")) == ["Watcher started"]
+    assert run(cfg, page("b")) == []  # nonce noise only
+    assert run(cfg, page(extra='<a href="/r">Register</a>')) == ["Page changed"]
+    assert run(cfg, page(extra='<a href="/r">Register</a>')) == []
+
+
+def test_smtp_failure_retries_change():
+    cfg = make_cfg()
+    run(cfg, page())
+    assert run(cfg, page(extra="<p>new</p>"), send_fails=True) == []
+    assert run(cfg, page(extra="<p>new</p>")) == ["Page changed"]
+
+
+def test_failure_alert_once_then_recovery():
+    cfg = make_cfg()
+    run(cfg, page())
+    assert run(cfg, boom=True) == []
+    assert run(cfg, boom=True) == []
+    assert run(cfg, boom=True) == ["Watcher failing"]
+    assert run(cfg, boom=True) == []
+    assert run(cfg, page()) == ["Watcher recovered"]
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
