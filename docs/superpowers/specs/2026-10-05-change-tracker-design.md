@@ -28,6 +28,21 @@ loop every INTERVAL_MIN:
 - `notify`: smtplib (STARTTLS on 587 or SSL on 465). Body: unified diff of text, newly added links, URL.
 - State: `/data/state.json` (hash, text, links, consecutive failure count) on a mounted volume.
 
+## Scheduling
+No cron. `watcher.py` is the container's main process and loops:
+
+```python
+while True:
+    try: check()
+    except Exception: log.exception("check failed")
+    time.sleep(INTERVAL_MIN * 60)
+```
+
+- Docker runs the container; `restart: unless-stopped` restarts it after a crash or a Pi/Docker reboot (OMV starts Docker on boot).
+- An exception in one cycle is logged and the loop continues.
+- Interval is "INTERVAL_MIN after the previous check finished", not clock-aligned; drift is irrelevant here.
+- Rejected: in-container cron (extra daemon, env passing), host cron with `docker run` (cold start per check).
+
 ## Config (env vars)
 `WATCH_URL`, `INTERVAL_MIN=15`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_TO`, optional `CSS_SELECTOR`.
 
