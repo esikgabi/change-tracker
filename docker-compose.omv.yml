@@ -1,0 +1,18 @@
+# All values come from the environment file (.env next to this file).
+# In OMV: Services > Compose > Files > this file > "Environment" tab.
+services:
+  change-tracker:
+    image: change-tracker:${IMAGE_TAG:?set IMAGE_TAG}
+    restart: unless-stopped
+    user: "${PUID:-1000}:${PGID:-1000}"
+    environment:
+      WATCH_URL: ${WATCH_URL:?}
+      INTERVAL_MIN: ${INTERVAL_MIN:-15}
+      CSS_SELECTOR: ${CSS_SELECTOR:-}
+      SMTP_HOST: ${SMTP_HOST:?}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:?}
+      SMTP_PASS: ${SMTP_PASS:?}
+      MAIL_TO: ${MAIL_TO:?}
+    volumes:
+      - ${DATA_DIR:?set DATA_DIR}:/data
