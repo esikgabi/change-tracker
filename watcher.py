@@ -13,7 +13,7 @@ import requests
 from bs4 import BeautifulSoup, Comment
 
 log = logging.getLogger("watcher")
-NONCE = re.compile(r"[?&]_wpnonce=[^&#]*")
+NONCE = re.compile(r"([?&])_wpnonce=[^&#]*&?")
 
 
 def normalize(html, selector=None):
@@ -30,7 +30,7 @@ def normalize(html, selector=None):
         t.decompose()
     lines = (ln.strip() for ln in root.get_text("\n").splitlines())
     text = "\n".join(ln for ln in lines if ln)
-    links = sorted({NONCE.sub("", a["href"]) for a in root.find_all("a", href=True)})
+    links = sorted({NONCE.sub(r"\1", a["href"]).rstrip("?&") for a in root.find_all("a", href=True)})
     return text, links
 
 
@@ -91,7 +91,7 @@ def fetch(url):
         try:
             r = requests.get(url, timeout=30, headers=headers)
             r.raise_for_status()
-            return r.text
+            return r.content
         except requests.RequestException:
             if attempt == 2:
                 raise
@@ -119,7 +119,7 @@ def check(cfg, fetch_fn=fetch, send=send_mail):
     st = _load(cfg.state_path)
     fails = st.get("failures", 0)
     try:
-        html = fetch_fn(cfg.url)
+        text, links = normalize(fetch_fn(cfg.url), cfg.selector)
     except Exception as e:
         log.warning("fetch failed: %s", e)
         fails += 1
@@ -130,7 +130,8 @@ def check(cfg, fetch_fn=fetch, send=send_mail):
         return
     if fails >= 3:
         send(cfg, "Watcher recovered", f"Fetching {cfg.url} works again.")
-    text, links = normalize(html, cfg.selector)
+        st["failures"] = 0
+        _save(cfg.state_path, st)
     h = signature(text, links)
     if "hash" not in st:
         send(cfg, "Watcher started", f"Baseline stored for {cfg.url}")

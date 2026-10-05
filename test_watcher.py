@@ -90,6 +90,37 @@ def test_failure_alert_once_then_recovery():
     assert run(cfg, page()) == ["Watcher recovered"]
 
 
+def test_selector_mismatch_counts_as_failure():
+    cfg = make_cfg()
+    run(cfg, page())
+    cfg.selector = "#nope"
+    assert [run(cfg, page()) for _ in range(4)] == [[], [], ["Watcher failing"], []]
+
+
+def test_recovered_sent_once_even_if_next_send_fails():
+    cfg = make_cfg()
+    run(cfg, page())
+    for _ in range(3):
+        run(cfg, boom=True)
+    sent = []
+
+    def send(c, subject, body):
+        if sent:
+            raise OSError("smtp down")
+        sent.append(subject)
+
+    try:
+        watcher.check(cfg, lambda u: page(extra="<p>new</p>"), send)
+    except OSError:
+        pass
+    assert sent == ["Watcher recovered"]
+    assert run(cfg, page(extra="<p>new</p>")) == ["Page changed"]
+
+
+def test_nonce_keeps_rest_of_href():
+    assert watcher.normalize('<a href="/p?_wpnonce=x&a=1">a</a><a href="/about?_wpnonce=x">b</a>')[1] == ["/about", "/p?a=1"]
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
