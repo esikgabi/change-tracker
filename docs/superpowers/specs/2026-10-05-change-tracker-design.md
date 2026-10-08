@@ -17,9 +17,9 @@ One container, one process, one file `watcher.py`, sleep loop. No cron, schedule
 ```
 loop every INTERVAL_MIN:
   fetch(url) -> normalize(html) -> compare with /data/state.json
-    changed -> send email (diff + new links + URL) -> save state
-    fetch failed 3x in a row -> one "watcher failing" email
-    recovered -> one "recovered" email
+    changed -> send email to all recipients (diff + new links + URL) -> save state
+    fetch failed 3x in a row -> one "watcher failing" email (admin only)
+    recovered -> one "recovered" email (admin only)
 ```
 
 ## Components
@@ -44,13 +44,13 @@ while True:
 - Rejected: in-container cron (extra daemon, env passing), host cron with `docker run` (cold start per check).
 
 ## Config (env vars)
-`WATCH_URL`, `INTERVAL_MIN=15`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_TO`, optional `CSS_SELECTOR`.
+`WATCH_URL`, `INTERVAL_MIN=15`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_TO` (comma/semicolon separated list; first = admin gets all mails, the rest get only "Page changed"), optional `CSS_SELECTOR`.
 
 ## Deployment
 `python:3.12-alpine`, non-root user, `restart: unless-stopped`, `docker-compose.yml` mounting `./data:/data` (pasteable into OMV Compose plugin). Builds natively on ARM64.
 
 ## Error handling
-- First run: store baseline, no change alert; send a "watcher started" email (SMTP test).
+- First run: store baseline, no change alert; send a "watcher started" email to the admin (SMTP test).
 - SMTP failure: state is NOT updated, so the change is retried next cycle.
 - Fetch failure (network/5xx): log, retry next cycle; alert after 3 consecutive failures, once.
 

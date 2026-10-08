@@ -13,6 +13,6 @@ services:
       SMTP_PORT: ${SMTP_PORT:-587}
       SMTP_USER: ${SMTP_USER:?}
       SMTP_PASS: ${SMTP_PASS:?}
-      MAIL_TO: ${MAIL_TO:?}
+      MAIL_TO: ${MAIL_TO:?}  # first = admin (all mails), rest = "Page changed" only
     volumes:
       - ${DATA_DIR:?set DATA_DIR}:/data

@@ -15,3 +15,4 @@ Test: `python test_watcher.py`
 - The first start sends a "Watcher started" email (doubles as an SMTP check).
 - Gmail requires an app password (not your account password).
 - Lower `INTERVAL_MIN` near registration opening.
+- `MAIL_TO` takes several addresses (`,` or `;`). The first is the admin and gets every mail; the rest get only "Page changed".
