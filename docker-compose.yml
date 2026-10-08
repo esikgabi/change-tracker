@@ -9,7 +9,8 @@ services:
       SMTP_PORT: "587"
       SMTP_USER: "you@gmail.com"
       SMTP_PASS: "app-password"
-      MAIL_TO: "you@gmail.com"
+      # First = admin (all mails); others get "Page changed" only. Separate with , or ;
+      MAIL_TO: "you@gmail.com, family@example.com"
       # CSS_SELECTOR: "main"
     volumes:
       - ./data:/data

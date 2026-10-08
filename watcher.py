@@ -38,13 +38,25 @@ def signature(text, links):
     return hashlib.sha256((text + "\n--\n" + "\n".join(links)).encode()).hexdigest()
 
 
+def parse_recipients(s):
+    """First address = admin (all mails); the rest get 'Page changed' only."""
+    out = [a.strip() for a in re.split(r"[;,]", s) if a.strip()]
+    if not out:
+        raise ValueError("MAIL_TO has no addresses")
+    return out
+
+
+def recipients(cfg, everyone):
+    return cfg.mail_to if everyone else cfg.mail_to[:1]
+
+
 @dataclass
 class Config:
     url: str
     smtp_host: str
     smtp_user: str
     smtp_pass: str
-    mail_to: str
+    mail_to: list
     smtp_port: int = 587
     interval_min: int = 15
     selector: str = None
@@ -55,7 +67,7 @@ class Config:
         e = os.environ
         return cls(
             url=e["WATCH_URL"], smtp_host=e["SMTP_HOST"], smtp_user=e["SMTP_USER"],
-            smtp_pass=e["SMTP_PASS"], mail_to=e["MAIL_TO"],
+            smtp_pass=e["SMTP_PASS"], mail_to=parse_recipients(e["MAIL_TO"]),
             smtp_port=int(e.get("SMTP_PORT", 587)),
             interval_min=int(e.get("INTERVAL_MIN", 15)),
             selector=e.get("CSS_SELECTOR") or None,
@@ -71,9 +83,9 @@ def build_body(url, old_text, new_text, old_links, new_links):
     return f"Page changed: {url}\n\nNew links:\n{links}\n\nText diff:\n{diff or '(links only)'}\n"
 
 
-def send_mail(cfg, subject, body):
+def send_mail(cfg, subject, body, everyone=False):
     msg = EmailMessage()
-    msg["Subject"], msg["From"], msg["To"] = subject, cfg.smtp_user, cfg.mail_to
+    msg["Subject"], msg["From"], msg["To"] = subject, cfg.smtp_user, ", ".join(recipients(cfg, everyone))
     msg.set_content(body)
     if cfg.smtp_port == 465:
         s = smtplib.SMTP_SSL(cfg.smtp_host, 465, timeout=30)
@@ -82,7 +94,9 @@ def send_mail(cfg, subject, body):
         s.starttls()
     with s:
         s.login(cfg.smtp_user, cfg.smtp_pass)
-        s.send_message(msg)
+        refused = s.send_message(msg)  # raises only if ALL recipients refused
+        if refused:
+            log.warning("recipients refused: %s", refused)
 
 
 def fetch(url):
@@ -136,7 +150,7 @@ def check(cfg, fetch_fn=fetch, send=send_mail):
     if "hash" not in st:
         send(cfg, "Watcher started", f"Baseline stored for {cfg.url}")
     elif h != st["hash"]:
-        send(cfg, "Page changed", build_body(cfg.url, st["text"], text, st["links"], links))
+        send(cfg, "Page changed", build_body(cfg.url, st["text"], text, st["links"], links), everyone=True)
     st.update(hash=h, text=text, links=links, failures=0)
     _save(cfg.state_path, st)
 
